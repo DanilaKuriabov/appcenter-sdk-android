@@ -64,8 +64,6 @@ public class ReleaseInstallerListenerTest {
     @Rule
     public PowerMockRule mPowerMockRule = new PowerMockRule();
 
-    private int mMockSessionId = 1;
-
     @Mock
     private Context mContext;
 
@@ -86,6 +84,8 @@ public class ReleaseInstallerListenerTest {
 
     @Mock
     private android.app.ProgressDialog mMockProgressDialog;
+
+    private int mMockSessionId = 1;
 
     private ReleaseInstallerListener mReleaseInstallerListener;
 
@@ -183,7 +183,7 @@ public class ReleaseInstallerListenerTest {
     public void throwIOExceptionAfterStartInstall() throws Exception {
 
         /* Throw exception. */
-        PowerMockito.doThrow(new IOException()).when(InstallerUtils.class, "installPackage", any(InputStream.class),  any(Context.class),  any(PackageInstaller.SessionCallback.class));
+        PowerMockito.doThrow(new IOException()).when(InstallerUtils.class, "installPackage", any(InputStream.class), any(Context.class), any(PackageInstaller.SessionCallback.class));
 
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
