@@ -6,14 +6,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.microsoft.appcenter.distribute">
 
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
-
-    <!--
-     From Android 10 (29 API level) or higher we have to
-     use this permission for restarting activity after update.
-     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-     -->
 
     <!--
      Android 11 brings in a lot of changes regarding privacy. By default, list of installed apps is now hidden.

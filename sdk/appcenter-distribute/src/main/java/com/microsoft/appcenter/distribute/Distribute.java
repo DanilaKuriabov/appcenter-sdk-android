@@ -13,7 +13,6 @@ import android.app.DownloadManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -26,6 +25,7 @@ import android.os.Build;
 import android.provider.Settings;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.UiThread;
 import androidx.annotation.VisibleForTesting;
 import androidx.annotation.WorkerThread;
@@ -33,7 +33,6 @@ import android.text.TextUtils;
 import android.widget.Toast;
 
 import com.microsoft.appcenter.AbstractAppCenterService;
-import com.microsoft.appcenter.DependencyConfiguration;
 import com.microsoft.appcenter.Flags;
 import com.microsoft.appcenter.channel.Channel;
 import com.microsoft.appcenter.distribute.channel.DistributeInfoTracker;
@@ -42,7 +41,6 @@ import com.microsoft.appcenter.distribute.download.ReleaseDownloaderFactory;
 import com.microsoft.appcenter.distribute.ingestion.DistributeIngestion;
 import com.microsoft.appcenter.distribute.ingestion.models.DistributionStartSessionLog;
 import com.microsoft.appcenter.distribute.ingestion.models.json.DistributionStartSessionLogFactory;
-import com.microsoft.appcenter.http.HttpClient;
 import com.microsoft.appcenter.http.HttpException;
 import com.microsoft.appcenter.http.HttpResponse;
 import com.microsoft.appcenter.http.HttpUtils;
@@ -65,14 +63,12 @@ import org.json.JSONException;
 
 import java.lang.ref.WeakReference;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
 import static android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE;
-import static android.util.Log.VERBOSE;
 import static com.microsoft.appcenter.distribute.DistributeConstants.DEFAULT_API_URL;
 import static com.microsoft.appcenter.distribute.DistributeConstants.DEFAULT_INSTALL_URL;
 import static com.microsoft.appcenter.distribute.DistributeConstants.DOWNLOAD_STATE_AVAILABLE;
@@ -106,8 +102,6 @@ import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_
 import static com.microsoft.appcenter.distribute.DistributeConstants.SERVICE_NAME;
 import static com.microsoft.appcenter.distribute.DistributeUtils.computeReleaseHash;
 import static com.microsoft.appcenter.distribute.DistributeUtils.getStoredDownloadState;
-import static com.microsoft.appcenter.http.DefaultHttpClient.METHOD_GET;
-import static com.microsoft.appcenter.http.HttpUtils.createHttpClient;
 
 /**
  * Distribute service.
@@ -119,10 +113,6 @@ public class Distribute extends AbstractAppCenterService {
      */
     @SuppressLint("StaticFieldLeak")
     private static Distribute sInstance;
-
-    private AppCenterPackageInstallerReceiver mAppCenterPackageInstallerReceiver;
-
-    private IntentFilter mPackageInstallerReceiverFilter;
 
     /**
      * Log factories managed by this service.
@@ -226,6 +216,11 @@ public class Distribute extends AbstractAppCenterService {
     private Dialog mUnknownSourcesDialog;
 
     /**
+     * Alert system dialog that was shown.
+     */
+    private Dialog mAlertSystemWindowsDialog;
+
+    /**
      * Mandatory download completed in app notification.
      */
     private Dialog mCompletedDownloadDialog;
@@ -252,9 +247,29 @@ public class Distribute extends AbstractAppCenterService {
     private ReleaseDownloadListener mReleaseDownloaderListener;
 
     /**
+     * Install release listener.
+     */
+    private ReleaseInstallerListener mReleaseInstallerListener;
+
+    /**
+     * Receiver of installing a new release.
+     */
+    private AppCenterPackageInstallerReceiver mAppCenterPackageInstallerReceiver;
+
+    /**
+     * Intent filter of receiver for a new release.
+     */
+    private IntentFilter mPackageInstallerReceiverFilter;
+
+    /**
      * Remember if we checked download since our own process restarted.
      */
     private boolean mCheckedDownload;
+
+    /**
+     * Remember whether the installation of a new release is started.
+     */
+    private boolean mInstallInProgress;
 
     /**
      * True when distribute workflow reached final state.
@@ -304,8 +319,8 @@ public class Distribute extends AbstractAppCenterService {
         mFactories.put(DistributionStartSessionLog.TYPE, new DistributionStartSessionLogFactory());
         mAppCenterPackageInstallerReceiver = new AppCenterPackageInstallerReceiver();
         mPackageInstallerReceiverFilter = new IntentFilter();
-        mPackageInstallerReceiverFilter.addAction(AppCenterPackageInstallerReceiver.START_INTENT);
-        mPackageInstallerReceiverFilter.addAction(AppCenterPackageInstallerReceiver.MY_PACKAGE_REPLACED_INTENT);
+        mPackageInstallerReceiverFilter.addAction(AppCenterPackageInstallerReceiver.START_ACTION);
+        mPackageInstallerReceiverFilter.addAction(AppCenterPackageInstallerReceiver.MY_PACKAGE_REPLACED_ACTION);
     }
 
     /**
@@ -525,14 +540,6 @@ public class Distribute extends AbstractAppCenterService {
     }
 
     @Override
-    public void onActivityStarted(Activity activity) {
-        super.onActivityStarted(activity);
-
-        /* Register package installer receiver. */
-        activity.registerReceiver(mAppCenterPackageInstallerReceiver, mPackageInstallerReceiverFilter);
-    }
-
-    @Override
     public synchronized void onActivityResumed(Activity activity) {
         mForegroundActivity = activity;
 
@@ -540,6 +547,7 @@ public class Distribute extends AbstractAppCenterService {
         if (mChannel != null) {
             resumeDistributeWorkflow();
         }
+        registerReceiver();
     }
 
     @Override
@@ -550,14 +558,6 @@ public class Distribute extends AbstractAppCenterService {
         if (mReleaseDownloaderListener != null) {
             mReleaseDownloaderListener.hideProgressDialog();
         }
-    }
-
-    @Override
-    public void onActivityStopped(Activity activity) {
-        super.onActivityStopped(activity);
-
-        /* Unregister package installer receiver. */
-        activity.unregisterReceiver(mAppCenterPackageInstallerReceiver);
     }
 
     @Override
@@ -580,6 +580,9 @@ public class Distribute extends AbstractAppCenterService {
 
             /* Resume distribute workflow only if there is foreground activity. */
             resumeWorkflowIfForeground();
+
+            /* Register package installer receiver. */
+            registerReceiver();
         } else {
 
             /* Clean all state on disabling, cancel everything. Keep only redirection parameters. */
@@ -596,6 +599,41 @@ public class Distribute extends AbstractAppCenterService {
             /* Disable the distribute info tracker. */
             mChannel.removeListener(mDistributeInfoTracker);
             mDistributeInfoTracker = null;
+
+            /* Unregister package installer receiver. */
+            unregisterReceiver();
+        }
+    }
+
+    /**
+     * Register package installer receiver.
+     */
+    private synchronized void registerReceiver() {
+        if (mForegroundActivity != null) {
+            try {
+                mForegroundActivity.registerReceiver(mAppCenterPackageInstallerReceiver, mPackageInstallerReceiverFilter);
+                AppCenterLog.debug(LOG_TAG, "The receiver for installing a new release was registered.");
+            } catch (IllegalArgumentException e) {
+                AppCenterLog.error(LOG_TAG, "The receiver wasn't registered.", e);
+            }
+        } else {
+            AppCenterLog.warn(LOG_TAG, "Couldn't register receiver due to activity is null.");
+        }
+    }
+
+    /**
+     * Unregister package installer receiver.
+     */
+    private synchronized void unregisterReceiver() {
+        if (mForegroundActivity != null) {
+            try {
+                mForegroundActivity.unregisterReceiver(mAppCenterPackageInstallerReceiver);
+                AppCenterLog.debug(LOG_TAG, "The receiver for installing a new release was unregistered.");
+            } catch (IllegalArgumentException e) {
+                AppCenterLog.error(LOG_TAG, "The receiver wasn't unregistered.", e);
+            }
+        } else {
+            AppCenterLog.warn(LOG_TAG, "Couldn't register unregister due to activity is null.");
         }
     }
 
@@ -746,11 +784,13 @@ public class Distribute extends AbstractAppCenterService {
         mCheckReleaseCallId = null;
         mUpdateDialog = null;
         mUnknownSourcesDialog = null;
+        mAlertSystemWindowsDialog = null;
         mCompletedDownloadDialog = null;
         mUpdateSetupFailedDialog = null;
         mLastActivityWithDialog.clear();
         mUsingDefaultUpdateDialog = null;
         mCheckedDownload = false;
+        mInstallInProgress = false;
         mManualCheckForUpdateRequested = false;
         updateReleaseDetails(null);
         SharedPreferencesManager.remove(PREFERENCE_KEY_RELEASE_DETAILS);
@@ -779,6 +819,23 @@ public class Distribute extends AbstractAppCenterService {
                 AppCenterLog.info(LOG_TAG, "Not checking in app updates as installed from a store.");
                 mWorkflowCompleted = true;
                 mManualCheckForUpdateRequested = false;
+                return;
+            }
+
+            /* Continue to install a new release if before resume was shown dialog. */
+            if (mAlertSystemWindowsDialog != null) {
+                mAlertSystemWindowsDialog.dismiss();
+                mAlertSystemWindowsDialog = null;
+                installingUpdate();
+                return;
+            }
+
+            /* Do nothing during installing a new release. */
+            if (mInstallInProgress) {
+                if (mReleaseInstallerListener != null) {
+                    mReleaseInstallerListener.showInstallProgressDialog(mForegroundActivity);
+                }
+                AppCenterLog.info(LOG_TAG, "Installing in progress...");
                 return;
             }
 
@@ -1030,10 +1087,14 @@ public class Distribute extends AbstractAppCenterService {
         mUpdateDialog = null;
         mUpdateSetupFailedDialog = null;
         mUnknownSourcesDialog = null;
+        mAlertSystemWindowsDialog = null;
         mLastActivityWithDialog.clear();
         mReleaseDetails = null;
         if (mReleaseDownloaderListener != null) {
             mReleaseDownloaderListener.hideProgressDialog();
+        }
+        if (mReleaseInstallerListener != null) {
+            mReleaseInstallerListener.hideInstallProgressDialog();
         }
         mWorkflowCompleted = true;
         mManualCheckForUpdateRequested = false;
@@ -1299,11 +1360,16 @@ public class Distribute extends AbstractAppCenterService {
             mReleaseDownloaderListener.hideProgressDialog();
             mReleaseDownloaderListener = null;
         }
+        if (mReleaseInstallerListener != null) {
+            mReleaseInstallerListener.hideInstallProgressDialog();
+            mReleaseInstallerListener = null;
+        }
         mReleaseDetails = releaseDetails;
         if (mReleaseDetails != null) {
 
             /* Create release downloader here to be able correctly cancel downloading from previous runs. */
             mReleaseDownloaderListener = new ReleaseDownloadListener(mContext, mReleaseDetails);
+            mReleaseInstallerListener = new ReleaseInstallerListener(mContext);
             mReleaseDownloader = ReleaseDownloaderFactory.create(mContext, mReleaseDetails, mReleaseDownloaderListener);
         }
     }
@@ -1565,6 +1631,65 @@ public class Distribute extends AbstractAppCenterService {
         }
     }
 
+
+    /**
+     * Show system alerts windows setting dialog.
+     */
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private synchronized void showSystemAlertsWindowsSettingsDialog() {
+
+        /* Do not attempt to show dialog if application is in the background. */
+        if (mForegroundActivity == null) {
+            AppCenterLog.warn(LOG_TAG, "The application is in background mode, the system alerts windows won't be displayed.");
+            return;
+        }
+
+        /* Check if we need to replace dialog. */
+        if (!shouldRefreshDialog(mAlertSystemWindowsDialog)) {
+            return;
+        }
+        AppCenterLog.debug(LOG_TAG, "Show new system alerts windows dialog.");
+
+        /* Build confirmation dialog on enabled system alerts windows permission. */
+        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(mForegroundActivity);
+        dialogBuilder.setMessage(R.string.appcenter_distribute_alert_system_dialog_message);
+        dialogBuilder.setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                mAlertSystemWindowsDialog = null;
+                AppCenterLog.debug(LOG_TAG, "Permission request on alert system windows denied. Continue installing...");
+
+                /* It is optional and installing can be continued if customer reject permission request. */
+                installingUpdate();
+            }
+        });
+        dialogBuilder.setOnCancelListener(new DialogInterface.OnCancelListener() {
+
+            @Override
+            public void onCancel(DialogInterface dialog) {
+                mAlertSystemWindowsDialog = null;
+                AppCenterLog.debug(LOG_TAG, "Permission request on alert system windows denied. Continue installing...");
+
+                /* It is optional and installing can be continued if customer reject permission request. */
+                installingUpdate();
+            }
+        });
+        dialogBuilder.setPositiveButton(R.string.appcenter_distribute_unknown_sources_dialog_settings, new DialogInterface.OnClickListener() {
+
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+
+                /* Open system alerts windows settings activity. */
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + mForegroundActivity.getPackageName()));
+                mForegroundActivity.startActivity(intent);
+            }
+        });
+        mAlertSystemWindowsDialog = dialogBuilder.create();
+        showAndRememberDialogActivity(mAlertSystemWindowsDialog);
+    }
+
     /**
      * Show unknown sources dialog. This can be called multiple times if clicking on HOME and app resumed
      * (it could be resumed in another activity covering the previous one).
@@ -1776,6 +1901,63 @@ public class Distribute extends AbstractAppCenterService {
             Intent intent = new Intent(context, DeepLinkActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(intent);
+        }
+    }
+
+    @UiThread
+    synchronized void notifyInstallProgress(boolean isInProgress) {
+        mInstallInProgress = isInProgress;
+        if (isInProgress) {
+
+            /* Do not attempt to show dialog if application is in the background. */
+            if (mForegroundActivity == null) {
+                AppCenterLog.warn(LOG_TAG, "Could not display install progress dialog in the background.");
+                return;
+            }
+            if (mReleaseInstallerListener == null) {
+                return;
+            }
+
+            /* Close to avoid dialog duplicates. */
+            mReleaseInstallerListener.hideInstallProgressDialog();
+
+            /* Create and show a new dialog. */
+            Dialog progressDialog = mReleaseInstallerListener.showInstallProgressDialog(mForegroundActivity);
+            showAndRememberDialogActivity(progressDialog);
+        } else {
+            if (mReleaseInstallerListener != null) {
+                mReleaseInstallerListener.hideInstallProgressDialog();
+                mReleaseInstallerListener = null;
+            }
+        }
+    }
+
+    /**
+     * Start to install a new update.
+     */
+    synchronized private void installingUpdate() {
+        if (mReleaseInstallerListener == null) {
+            AppCenterLog.debug(LOG_TAG, "Installing couldn't start due to the release installer wasn't initialized.");
+            return;
+        }
+        mReleaseInstallerListener.startInstall();
+    }
+
+    /**
+     * Ask permission on start application after update or start to install a new update.
+     */
+    synchronized void showSystemSettingsDialogOrStartInstalling(long downloadId) {
+        if (mReleaseInstallerListener == null) {
+            AppCenterLog.debug(LOG_TAG, "Couldn't set 'downloadId' value due to the release installer wasn't initialized.");
+            return;
+        }
+        mReleaseInstallerListener.setDownloadId(downloadId);
+
+        /* Check permission on start application after update. */
+        if (InstallerUtils.isSystemAlertWindowsEnabled(mContext)) {
+            installingUpdate();
+        } else {
+            showSystemAlertsWindowsSettingsDialog();
         }
     }
 

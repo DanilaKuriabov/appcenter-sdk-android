@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageInstaller;
+import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import androidx.annotation.NonNull;
@@ -37,12 +38,12 @@ public class InstallerUtils {
     static final String INSTALL_NON_MARKET_APPS_ENABLED = "1";
 
     /**
-     * TODO
+     * Name of package installer stream.
      */
     private static final String sOutputStreamName = "AppCenterPackageInstallerStream";
 
     /**
-     * TODO
+     * Buffer capacity of package installer.
      */
     private static final int sBufferCapacity = 16384;
 
@@ -124,16 +125,39 @@ public class InstallerUtils {
     }
 
     /**
-     * Install new release.
-     * @param data input stream data from the install apk.
-     * @throws IOException
+     * Check whether user enabled start activity from the background.
+     *
+     * @param context any context.
+     * @return true if start activity from the background is enabled, false otherwise.
      */
-    public static void installPackage(InputStream data, Context context) throws IOException {
+    public synchronized static boolean isSystemAlertWindowsEnabled(@NonNull Context context) {
+
+        /*
+        * From Android 10 (29 API level) or higher we have to
+        * use this permission for restarting activity after update.
+        * See more about restrictions on starting activities from the background:
+        * - https://developer.android.com/guide/components/activities/background-starts
+        * - https://developer.android.com/about/versions/10/behavior-changes-all#sysalert-go
+        */
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                Settings.canDrawOverlays(context);
+    }
+
+    /**
+     * Install a new release.
+     *
+     * @param data input stream data from the installing apk file.
+     */
+    public synchronized static void installPackage(@NonNull InputStream data, Context context, ReleaseInstallerListener releaseInstallerListener) throws IOException {
         PackageInstaller.Session session = null;
+        OutputStream out = null;
         try {
 
             /* Prepare package installer. */
             PackageInstaller packageInstaller = context.getPackageManager().getPackageInstaller();
+            if (releaseInstallerListener != null) {
+                packageInstaller.registerSessionCallback(releaseInstallerListener);
+            }
             PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
                     PackageInstaller.SessionParams.MODE_FULL_INSTALL);
 
@@ -141,8 +165,8 @@ public class InstallerUtils {
             int sessionId = packageInstaller.createSession(params);
             session = packageInstaller.openSession(sessionId);
 
-            /* Start installing. */
-            OutputStream out = session.openWrite(sOutputStreamName, 0, -1);
+            /* Start to install a new release. */
+            out = session.openWrite(sOutputStreamName, 0, -1);
             byte[] buffer = new byte[sBufferCapacity];
             int c;
             while ((c = data.read(buffer)) != -1) {
@@ -152,31 +176,34 @@ public class InstallerUtils {
             data.close();
             out.close();
             session.commit(createIntentSender(context, sessionId));
-        } catch (IOException e) {
-            AppCenterLog.error(LOG_TAG, "Couldn't install package", e);
-        } catch (RuntimeException e) {
+        } catch (IOException | RuntimeException e) {
             if (session != null) {
                 session.abandon();
             }
-            AppCenterLog.error(LOG_TAG, "Couldn't install package", e);
+            AppCenterLog.error(LOG_TAG, "Couldn't install a new release.", e);
         } finally {
             if (session != null) {
                 session.close();
             }
+            if (out != null) {
+                out.close();
+            }
+            data.close();
         }
     }
 
     /**
-     * Return IntentSender with the receiver that will be launched after installation.
-     * @param context context.
+     * Return IntentSender with the receiver that listens to the package installer session status.
+     *
+     * @param context any context.
      * @param sessionId install sessionId.
      * @return IntentSender with receiver.
      */
-    public static IntentSender createIntentSender(Context context, int sessionId) {
+    public synchronized static IntentSender createIntentSender(Context context, int sessionId) {
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
                 context,
                 sessionId,
-                new Intent(AppCenterPackageInstallerReceiver.START_INTENT),
+                new Intent(AppCenterPackageInstallerReceiver.START_ACTION),
                 0);
         return pendingIntent.getIntentSender();
     }
