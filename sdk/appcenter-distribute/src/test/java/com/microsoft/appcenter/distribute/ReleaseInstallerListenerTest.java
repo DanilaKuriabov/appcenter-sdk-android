@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ * Licensed under the MIT License.
+ */
+
 package com.microsoft.appcenter.distribute;
 
 import static org.mockito.Matchers.any;
@@ -7,8 +12,8 @@ import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -79,6 +84,9 @@ public class ReleaseInstallerListenerTest {
     @Mock
     private DownloadManager mDownloadManager;
 
+    @Mock
+    private android.app.ProgressDialog mMockProgressDialog;
+
     private ReleaseInstallerListener mReleaseInstallerListener;
 
     public ReleaseInstallerListenerTest() {
@@ -94,6 +102,10 @@ public class ReleaseInstallerListenerTest {
         mockStatic(AppCenterLog.class);
         mockStatic(Toast.class);
 
+        /* Mock progress dialog. */
+        whenNew(android.app.ProgressDialog.class).withAnyArguments().thenReturn(mMockProgressDialog);
+        when(mMockProgressDialog.isIndeterminate()).thenReturn(false);
+
         /* Mock toast. */
         when(Toast.makeText(any(Context.class), anyString(), anyInt())).thenReturn(mToast);
 
@@ -108,6 +120,17 @@ public class ReleaseInstallerListenerTest {
 
         /* Create installer listener. */
         mReleaseInstallerListener = new ReleaseInstallerListener(mContext);
+
+        /* Set downloadId. */
+        mReleaseInstallerListener.setDownloadId(1);
+
+        /* Init install progress dialog. */
+        mReleaseInstallerListener.showInstallProgressDialog(mActivity);
+
+        /* Verify call methods. */
+        verify(mMockProgressDialog).setProgressPercentFormat(any(NumberFormat.class));
+        verify(mMockProgressDialog).setProgressNumberFormat(anyString());
+        verify(mMockProgressDialog).setIndeterminate(anyBoolean());
     }
 
     @After
@@ -119,15 +142,7 @@ public class ReleaseInstallerListenerTest {
     public void releaseInstallProcessWhenOnFinnishFailure() throws Exception {
 
         /* Mock progress dialog. */
-        android.app.ProgressDialog mockProgressDialog = mock(android.app.ProgressDialog.class);
-        whenNew(android.app.ProgressDialog.class).withAnyArguments().thenReturn(mockProgressDialog);
-        when(mockProgressDialog.isIndeterminate()).thenReturn(true);
-
-        /* Init install progress dialog. */
-        mReleaseInstallerListener.showInstallProgressDialog(mActivity);
-
-        /* Set downloadId. */
-        mReleaseInstallerListener.setDownloadId(1);
+        when(mMockProgressDialog.isIndeterminate()).thenReturn(true);
 
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
@@ -170,9 +185,6 @@ public class ReleaseInstallerListenerTest {
         /* Throw exception. */
         PowerMockito.doThrow(new IOException()).when(InstallerUtils.class, "installPackage", any(InputStream.class),  any(Context.class),  any(PackageInstaller.SessionCallback.class));
 
-        /* Set downloadId. */
-        mReleaseInstallerListener.setDownloadId(1);
-
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
 
@@ -182,28 +194,60 @@ public class ReleaseInstallerListenerTest {
     }
 
     @Test
-    public void normalReleaseInstallerProcessWhenWithContext() throws Exception {
-        normalReleaseInstallerProcess(mReleaseInstallerListener);
-    }
+    public void normalReleaseInstallerProcessWhenProgressDialogNull() throws Exception {
 
-    @Test
-    public void normalReleaseInstallerProcessWhenContextNull() throws Exception {
-        normalReleaseInstallerProcess(new ReleaseInstallerListener(null));
+        /* Start install process. */
+        mReleaseInstallerListener.startInstall();
+
+        /* Verify that installPackage method was called. */
+        ArgumentCaptor<PackageInstaller.SessionCallback> sessionListener = ArgumentCaptor.forClass(PackageInstaller.SessionCallback.class);
+        verifyStatic();
+        InstallerUtils.installPackage(Matchers.<InputStream>any(), Matchers.<Context>any(), sessionListener.capture());
+
+        /* Emulate session status. */
+        sessionListener.getValue().onCreated(mMockSessionId);
+        sessionListener.getValue().onBadgingChanged(mMockSessionId);
+
+        /* Verify that installer process was triggered in the Distribute. */
+        sessionListener.getValue().onActiveChanged(mMockSessionId, true);
+        verify(mDistribute).notifyInstallProgress(eq(true));
+
+        /* Hide dialog. */
+        mReleaseInstallerListener.hideInstallProgressDialog();
+
+        /* Verify that runnable was called. */
+        verifyStatic();
+        HandlerUtils.runOnUiThread(any(Runnable.class));
+
+        /* Verity that progress dialog was updated. */
+        sessionListener.getValue().onProgressChanged(mMockSessionId, 1);
+
+        /* Verify that the handler was called and catch runnable. */
+        ArgumentCaptor<Runnable> runnable = ArgumentCaptor.forClass(Runnable.class);
+        verifyStatic(times(2));
+        HandlerUtils.runOnUiThread(runnable.capture());
+        runnable.getValue().run();
+
+        /* Verify that the progress dialog was updated. */
+        verify(mMockProgressDialog, never()).setProgress(anyInt());
+
+        /* Verify that progress dialog was closed after finish install process*/
+        sessionListener.getValue().onFinished(mMockSessionId, true);
+
+        /* Verify that the handler was called again. */
+        verifyStatic(times(3));
+        HandlerUtils.runOnUiThread(runnable.capture());
+        runnable.getValue().run();
+
+        /* Verify that installer process was triggered in the Distribute again. */
+        verify(mDistribute).notifyInstallProgress(eq(false));
     }
 
     @Test
     public void normalReleaseInstallerProcessWhenDialogIsIndeterminate() throws Exception {
 
         /* Mock progress dialog. */
-        android.app.ProgressDialog mockProgressDialog = mock(android.app.ProgressDialog.class);
-        whenNew(android.app.ProgressDialog.class).withAnyArguments().thenReturn(mockProgressDialog);
-        when(mockProgressDialog.isIndeterminate()).thenReturn(false);
-
-        /* Init install progress dialog. */
-        mReleaseInstallerListener.showInstallProgressDialog(mActivity);
-
-        /* Set downloadId. */
-        mReleaseInstallerListener.setDownloadId(1);
+        when(mMockProgressDialog.isIndeterminate()).thenReturn(true);
 
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
@@ -231,10 +275,11 @@ public class ReleaseInstallerListenerTest {
         runnable.getValue().run();
 
         /* Verify that the progress dialog was updated. */
-        verify(mockProgressDialog).setProgress(anyInt());
-        verify(mockProgressDialog).setProgressPercentFormat(any(NumberFormat.class));
-        verify(mockProgressDialog).setProgressNumberFormat(anyString());
-        verify(mockProgressDialog).setIndeterminate(anyBoolean());
+        verify(mMockProgressDialog).setProgress(anyInt());
+        verify(mMockProgressDialog).setMax(anyInt());
+        verify(mMockProgressDialog, times(2)).setProgressPercentFormat(any(NumberFormat.class));
+        verify(mMockProgressDialog, times(2)).setProgressNumberFormat(anyString());
+        verify(mMockProgressDialog, times(2)).setIndeterminate(anyBoolean());
 
         /* Verify that progress dialog was closed after finish install process*/
         sessionListener.getValue().onFinished(mMockSessionId, true);
@@ -248,18 +293,17 @@ public class ReleaseInstallerListenerTest {
         verify(mDistribute).notifyInstallProgress(eq(false));
     }
 
+    @Test
+    public void normalReleaseInstallerProcessWhenWithContext() throws Exception {
+        normalReleaseInstallerProcess(mReleaseInstallerListener);
+    }
+
+    @Test
+    public void normalReleaseInstallerProcessWhenContextNull() throws Exception {
+        normalReleaseInstallerProcess(new ReleaseInstallerListener(null));
+    }
+
     public void normalReleaseInstallerProcess(ReleaseInstallerListener listener) throws Exception {
-
-        /* Mock progress dialog. */
-        android.app.ProgressDialog mockProgressDialog = mock(android.app.ProgressDialog.class);
-        whenNew(android.app.ProgressDialog.class).withAnyArguments().thenReturn(mockProgressDialog);
-        when(mockProgressDialog.isIndeterminate()).thenReturn(true);
-
-        /* Init install progress dialog. */
-        mReleaseInstallerListener.showInstallProgressDialog(mActivity);
-
-        /* Set downloadId. */
-        mReleaseInstallerListener.setDownloadId(1);
 
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
@@ -287,7 +331,7 @@ public class ReleaseInstallerListenerTest {
         runnable.getValue().run();
 
         /* Verify that the progress dialog was updated. */
-        verify(mockProgressDialog).setProgress(anyInt());
+        verify(mMockProgressDialog).setProgress(anyInt());
 
         /* Verify that progress dialog was closed after finish install process*/
         sessionListener.getValue().onFinished(mMockSessionId, true);
