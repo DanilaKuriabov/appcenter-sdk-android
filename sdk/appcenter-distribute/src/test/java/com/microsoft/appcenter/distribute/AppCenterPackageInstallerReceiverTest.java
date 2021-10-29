@@ -210,7 +210,7 @@ public class AppCenterPackageInstallerReceiverTest {
 
         /* Verify that log was called. */
         verifyStatic();
-        AppCenterLog.debug(eq(AppCenterLog.LOG_TAG), eq(String.format(Locale.ENGLISH, "Unrecognized action %s - do nothing.", mIntent.getAction())));
+        AppCenterLog.debug(eq(AppCenterLog.LOG_TAG), eq("Unrecognized action UnknownAction - do nothing."));
     }
 }
 
