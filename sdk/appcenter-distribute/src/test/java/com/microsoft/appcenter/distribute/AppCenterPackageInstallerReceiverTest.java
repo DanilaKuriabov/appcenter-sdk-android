@@ -37,6 +37,8 @@ import org.mockito.Mock;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.rule.PowerMockRule;
 
+import java.util.Locale;
+
 @PrepareForTest({
         AppCenterLog.class,
         Toast.class,
@@ -185,7 +187,6 @@ public class AppCenterPackageInstallerReceiverTest {
 
         /* Create unrecognized status  */
         int status = 10;
-
         when(mIntent.getAction()).thenReturn(START_ACTION);
         when(mIntent.getExtras()).thenReturn(mBundle);
         when(mBundle.getInt(eq(PackageInstaller.EXTRA_STATUS))).thenReturn(status);
@@ -198,6 +199,18 @@ public class AppCenterPackageInstallerReceiverTest {
         /* Verify that log was called. */
         verifyStatic();
         AppCenterLog.debug(eq(AppCenterLog.LOG_TAG), eq("Unrecognized status received from installer: " + status));
+    }
+
+    @Test
+    public void onReceiverWithUnknownAction() {
+        when(mIntent.getAction()).thenReturn("UnknownAction");
+
+        /* Call method with wrong action. */
+        mAppCenterPackageInstallerReceiver.onReceive(mContext, mIntent);
+
+        /* Verify that log was called. */
+        verifyStatic();
+        AppCenterLog.debug(eq(AppCenterLog.LOG_TAG), eq(String.format(Locale.ENGLISH, "Unrecognized action %s - do nothing.", mIntent.getAction())));
     }
 }
 

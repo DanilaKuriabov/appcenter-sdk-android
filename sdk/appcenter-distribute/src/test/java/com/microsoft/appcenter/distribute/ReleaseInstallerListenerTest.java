@@ -210,14 +210,16 @@ public class ReleaseInstallerListenerTest {
         mReleaseInstallerListener.hideInstallProgressDialog();
 
         /* Verify that runnable was called. */
+        ArgumentCaptor<Runnable> runnable = ArgumentCaptor.forClass(Runnable.class);
         verifyStatic();
-        HandlerUtils.runOnUiThread(any(Runnable.class));
+        HandlerUtils.runOnUiThread(runnable.capture());
+        runnable.getValue().run();
 
         /* Verity that progress dialog was updated. */
         sessionListener.getValue().onProgressChanged(mMockSessionId, 1);
 
         /* Verify that the handler was called and catch runnable. */
-        ArgumentCaptor<Runnable> runnable = ArgumentCaptor.forClass(Runnable.class);
+        runnable = ArgumentCaptor.forClass(Runnable.class);
         verifyStatic(times(2));
         HandlerUtils.runOnUiThread(runnable.capture());
         runnable.getValue().run();
