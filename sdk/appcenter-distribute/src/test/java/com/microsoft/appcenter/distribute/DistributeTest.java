@@ -346,7 +346,7 @@ public class DistributeTest extends AbstractDistributeTest {
         ReleaseDetails mockReleaseDetails = mock(ReleaseDetails.class);
 
         /* Call notify download. */
-        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mockReleaseDetails);
+        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mockReleaseDetails, mInstallIntent);
 
         /* Verify. */
         assertTrue(notifyDownloadResult);
@@ -366,7 +366,7 @@ public class DistributeTest extends AbstractDistributeTest {
         when(DistributeUtils.getStoredDownloadState()).thenReturn(DOWNLOAD_STATE_NOTIFIED);
 
         /* Call notify download. */
-        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails);
+        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails, mInstallIntent);
 
         /* Verify. */
         assertFalse(notifyDownloadResult);
@@ -386,7 +386,7 @@ public class DistributeTest extends AbstractDistributeTest {
         Distribute.getInstance().onActivityResumed(mock(Activity.class));
 
         /* Call notify download. */
-        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails);
+        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails, mInstallIntent);
 
         /* Verify. */
         assertFalse(notifyDownloadResult);
@@ -398,7 +398,7 @@ public class DistributeTest extends AbstractDistributeTest {
         mockStatic(DistributeUtils.class);
         when(DistributeUtils.loadCachedReleaseDetails()).thenReturn(mReleaseDetails);
         Distribute.getInstance().startFromBackground(mContext);
-        assertTrue(Distribute.getInstance().notifyDownload(mock(ReleaseDetails.class)));
+        assertTrue(Distribute.getInstance().notifyDownload(mock(ReleaseDetails.class), mInstallIntent));
     }
 
     @Test
@@ -409,7 +409,7 @@ public class DistributeTest extends AbstractDistributeTest {
         /* mReleaseDownloader is null and is created. */
         Distribute.getInstance().startFromBackground(mContext);
         verifyStatic();
-//        ReleaseDownloaderFactory.create(any(Context.class), any(ReleaseDetails.class), any(ReleaseDownloader.Listener.class));
+        ReleaseDownloaderFactory.create(any(Context.class), any(ReleaseDetails.class), any(ReleaseDownloader.Listener.class));
 
         /* mReleaseDetails not null but id is not equal to mReleaseDownloader details id. */
         Distribute.getInstance().startFromBackground(mContext);
@@ -603,7 +603,7 @@ public class DistributeTest extends AbstractDistributeTest {
     public void showUpdateDialogReleaseDownloaderNullTest() {
 
         /* Mock mReleaseDownloader null. */
-//        when(ReleaseDownloaderFactory.create(any(Context.class), any(ReleaseDetails.class), any(ReleaseDownloadListener.class))).thenReturn(null);
+        when(ReleaseDownloaderFactory.create(any(Context.class), any(ReleaseDetails.class), any(ReleaseDownloadListener.class))).thenReturn(null);
 
         mockStatic(DistributeUtils.class);
         when(DistributeUtils.getStoredDownloadState()).thenReturn(-1);
