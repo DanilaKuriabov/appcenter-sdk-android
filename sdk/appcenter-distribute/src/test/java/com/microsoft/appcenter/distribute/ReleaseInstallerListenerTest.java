@@ -44,6 +44,7 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.rule.PowerMockRule;
 
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.text.NumberFormat;
@@ -69,6 +70,9 @@ public class ReleaseInstallerListenerTest {
 
     @Mock
     private Toast mToast;
+
+    @Mock
+    private DownloadManager mDownloadManager;
 
     @Mock
     private android.app.ProgressDialog mMockProgressDialog;
@@ -105,9 +109,8 @@ public class ReleaseInstallerListenerTest {
         whenNew(FileInputStream.class).withAnyArguments().thenReturn(mock(FileInputStream.class));
 
         /* Mock download manager. */
-        DownloadManager downloadManager = mock(DownloadManager.class);
-        when(downloadManager.openDownloadedFile(anyLong())).thenReturn(mock(ParcelFileDescriptor.class));
-        when(mockContext.getSystemService(anyString())).thenReturn(downloadManager);
+        when(mDownloadManager.openDownloadedFile(anyLong())).thenReturn(mock(ParcelFileDescriptor.class));
+        when(mockContext.getSystemService(anyString())).thenReturn(mDownloadManager);
 
         /* Create installer listener. */
         mReleaseInstallerListener = new ReleaseInstallerListener(mockContext);
@@ -133,14 +136,14 @@ public class ReleaseInstallerListenerTest {
     public void throwIOExceptionAfterStartInstall() throws Exception {
 
         /* Throw exception. */
-        PowerMockito.doThrow(new IOException()).when(InstallerUtils.class, "installPackage", any(InputStream.class), any(Context.class), any(PackageInstaller.SessionCallback.class));
+        when(mDownloadManager.openDownloadedFile(anyLong())).thenThrow(new FileNotFoundException());
 
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
 
         /* Verify that exception was called. */
         verifyStatic();
-        AppCenterLog.error(anyString(), anyString(), any(IOException.class));
+        AppCenterLog.error(anyString(), anyString(), any(FileNotFoundException.class));
     }
 
     @Test

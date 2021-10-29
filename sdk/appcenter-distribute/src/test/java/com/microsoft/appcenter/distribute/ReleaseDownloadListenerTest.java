@@ -377,7 +377,7 @@ public class ReleaseDownloadListenerTest {
         /* Do not notify the download. */
         when(mDistribute.notifyDownload(mockReleaseDetails)).thenReturn(false);
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
-        assertTrue(releaseDownloadListener.onComplete(anyLong()));
+        releaseDownloadListener.onComplete(anyLong());
 
         /* Verify that setInstalling() is called on mandatory update. */
         verify(mDistribute).setInstalling(mockReleaseDetails);
@@ -392,7 +392,7 @@ public class ReleaseDownloadListenerTest {
         /* Notify the download. */
         when(mDistribute.notifyDownload(mockReleaseDetails)).thenReturn(true);
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
-        assertTrue(releaseDownloadListener.onComplete(anyLong()));
+        releaseDownloadListener.onComplete(anyLong());
 
         /* Verify that startActivity() and setInstalling() are not called here. */
         verify(mContext, never()).startActivity(any(Intent.class));
@@ -403,10 +403,13 @@ public class ReleaseDownloadListenerTest {
     public void onCompleteActivityNotResolved() throws Exception {
         boolean mandatoryUpdate = false;
 
+        /* Mock notify download result. */
+        when(mDistribute.notifyDownload(any(ReleaseDetails.class))).thenReturn(true);
+
         /* Mock resolving to null activity. */
         when(mInstallIntent.resolveActivity(any(PackageManager.class))).thenReturn(null);
         ReleaseDetails mockReleaseDetails = mockReleaseDetails(mandatoryUpdate);
-        ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, null);
+        ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
 
         /* Verify that nothing is called and the method is exited early with false result. */
         releaseDownloadListener.onComplete(anyLong());
