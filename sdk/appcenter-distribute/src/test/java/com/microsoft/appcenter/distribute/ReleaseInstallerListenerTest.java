@@ -65,35 +65,23 @@ public class ReleaseInstallerListenerTest {
     public PowerMockRule mPowerMockRule = new PowerMockRule();
 
     @Mock
-    private Context mContext;
-
-    @Mock
-    private Activity mActivity;
-
-    @Mock
     private Distribute mDistribute;
 
     @Mock
     private Toast mToast;
 
     @Mock
-    private ParcelFileDescriptor mMockFileDescriptor;
-
-    @Mock
-    private DownloadManager mDownloadManager;
-
-    @Mock
     private android.app.ProgressDialog mMockProgressDialog;
 
-    private int mMockSessionId = 1;
+    private final int mMockSessionId = 1;
 
     private ReleaseInstallerListener mReleaseInstallerListener;
 
-    public ReleaseInstallerListenerTest() {
-    }
-
     @Before
     public void setUp() throws Exception {
+
+        /* Mock context. */
+        Context mockContext = mock(Context.class);
 
         /* Mock static classes. */
         mockStatic(InstallerUtils.class);
@@ -115,17 +103,20 @@ public class ReleaseInstallerListenerTest {
 
         /* Mock constructors and classes. */
         whenNew(FileInputStream.class).withAnyArguments().thenReturn(mock(FileInputStream.class));
-        when(mDownloadManager.openDownloadedFile(anyLong())).thenReturn(mMockFileDescriptor);
-        when(mContext.getSystemService(anyString())).thenReturn(mDownloadManager);
+
+        /* Mock download manager. */
+        DownloadManager downloadManager = mock(DownloadManager.class);
+        when(downloadManager.openDownloadedFile(anyLong())).thenReturn(mock(ParcelFileDescriptor.class));
+        when(mockContext.getSystemService(anyString())).thenReturn(downloadManager);
 
         /* Create installer listener. */
-        mReleaseInstallerListener = new ReleaseInstallerListener(mContext);
+        mReleaseInstallerListener = new ReleaseInstallerListener(mockContext);
 
         /* Set downloadId. */
         mReleaseInstallerListener.setDownloadId(1);
 
         /* Init install progress dialog. */
-        mReleaseInstallerListener.showInstallProgressDialog(mActivity);
+        mReleaseInstallerListener.showInstallProgressDialog(mock(Activity.class));
 
         /* Verify call methods. */
         verify(mMockProgressDialog).setProgressPercentFormat(any(NumberFormat.class));
@@ -139,7 +130,21 @@ public class ReleaseInstallerListenerTest {
     }
 
     @Test
-    public void releaseInstallProcessWhenOnFinnishFailure() throws Exception {
+    public void throwIOExceptionAfterStartInstall() throws Exception {
+
+        /* Throw exception. */
+        PowerMockito.doThrow(new IOException()).when(InstallerUtils.class, "installPackage", any(InputStream.class), any(Context.class), any(PackageInstaller.SessionCallback.class));
+
+        /* Start install process. */
+        mReleaseInstallerListener.startInstall();
+
+        /* Verify that exception was called. */
+        verifyStatic();
+        AppCenterLog.error(anyString(), anyString(), any(IOException.class));
+    }
+
+    @Test
+    public void releaseInstallProcessWhenOnFinnishFailureWithContext() throws IOException {
 
         /* Mock progress dialog. */
         when(mMockProgressDialog.isIndeterminate()).thenReturn(true);
@@ -180,21 +185,7 @@ public class ReleaseInstallerListenerTest {
     }
 
     @Test
-    public void throwIOExceptionAfterStartInstall() throws Exception {
-
-        /* Throw exception. */
-        PowerMockito.doThrow(new IOException()).when(InstallerUtils.class, "installPackage", any(InputStream.class), any(Context.class), any(PackageInstaller.SessionCallback.class));
-
-        /* Start install process. */
-        mReleaseInstallerListener.startInstall();
-
-        /* Verify that exception was called. */
-        verifyStatic();
-        AppCenterLog.error(anyString(), anyString(), any(IOException.class));
-    }
-
-    @Test
-    public void normalReleaseInstallerProcessWhenProgressDialogNull() throws Exception {
+    public void releaseInstallerProcessWhenProgressDialogNull() throws Exception {
 
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
@@ -244,7 +235,7 @@ public class ReleaseInstallerListenerTest {
     }
 
     @Test
-    public void normalReleaseInstallerProcessWhenDialogIsIndeterminate() throws Exception {
+    public void releaseInstallerProcessWhenDialogIsIndeterminate() throws Exception {
 
         /* Mock progress dialog. */
         when(mMockProgressDialog.isIndeterminate()).thenReturn(true);
@@ -294,16 +285,7 @@ public class ReleaseInstallerListenerTest {
     }
 
     @Test
-    public void normalReleaseInstallerProcessWhenWithContext() throws Exception {
-        normalReleaseInstallerProcess(mReleaseInstallerListener);
-    }
-
-    @Test
-    public void normalReleaseInstallerProcessWhenContextNull() throws Exception {
-        normalReleaseInstallerProcess(new ReleaseInstallerListener(null));
-    }
-
-    public void normalReleaseInstallerProcess(ReleaseInstallerListener listener) throws Exception {
+    public void releaseInstallerProcessWhenWithContext() throws Exception {
 
         /* Start install process. */
         mReleaseInstallerListener.startInstall();
