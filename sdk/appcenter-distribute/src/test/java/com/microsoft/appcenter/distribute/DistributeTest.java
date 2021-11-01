@@ -6,15 +6,19 @@
 package com.microsoft.appcenter.distribute;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageInstaller;
 import android.os.Build;
 
 import com.microsoft.appcenter.DependencyConfiguration;
@@ -29,17 +33,20 @@ import com.microsoft.appcenter.http.ServiceCall;
 import com.microsoft.appcenter.http.ServiceCallback;
 import com.microsoft.appcenter.ingestion.models.json.LogFactory;
 import com.microsoft.appcenter.test.TestUtils;
+import com.microsoft.appcenter.utils.AppCenterLog;
 import com.microsoft.appcenter.utils.DeviceInfoHelper;
 import com.microsoft.appcenter.utils.storage.SharedPreferencesManager;
 
 import org.junit.After;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Matchers;
 import org.mockito.internal.util.reflection.Whitebox;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 
+import java.sql.SQLOutput;
 import java.util.Collections;
 import java.util.Map;
 
@@ -48,6 +55,7 @@ import static com.microsoft.appcenter.distribute.DistributeConstants.DOWNLOAD_ST
 import static com.microsoft.appcenter.distribute.DistributeConstants.DOWNLOAD_STATE_ENQUEUED;
 import static com.microsoft.appcenter.distribute.DistributeConstants.DOWNLOAD_STATE_INSTALLING;
 import static com.microsoft.appcenter.distribute.DistributeConstants.DOWNLOAD_STATE_NOTIFIED;
+import static com.microsoft.appcenter.distribute.DistributeConstants.LOG_TAG;
 import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_KEY_DOWNLOADED_DISTRIBUTION_GROUP_ID;
 import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_KEY_DOWNLOADED_RELEASE_HASH;
 import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_KEY_DOWNLOADED_RELEASE_ID;
@@ -64,6 +72,7 @@ import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.RETURNS_MOCKS;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -75,7 +84,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 import static org.powermock.api.mockito.PowerMockito.verifyStatic;
 import static org.powermock.api.mockito.PowerMockito.whenNew;
 
-@PrepareForTest({DistributeUtils.class, HttpUtils.class, DeviceInfoHelper.class})
+@PrepareForTest({DistributeUtils.class, HttpUtils.class, DeviceInfoHelper.class, AppCenterLog.class})
 public class DistributeTest extends AbstractDistributeTest {
 
     private static final String DISTRIBUTION_GROUP_ID = "group_id";
@@ -346,7 +355,7 @@ public class DistributeTest extends AbstractDistributeTest {
         ReleaseDetails mockReleaseDetails = mock(ReleaseDetails.class);
 
         /* Call notify download. */
-        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mockReleaseDetails, mInstallIntent);
+        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mockReleaseDetails);
 
         /* Verify. */
         assertTrue(notifyDownloadResult);
@@ -366,7 +375,7 @@ public class DistributeTest extends AbstractDistributeTest {
         when(DistributeUtils.getStoredDownloadState()).thenReturn(DOWNLOAD_STATE_NOTIFIED);
 
         /* Call notify download. */
-        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails, mInstallIntent);
+        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails);
 
         /* Verify. */
         assertFalse(notifyDownloadResult);
@@ -386,7 +395,7 @@ public class DistributeTest extends AbstractDistributeTest {
         Distribute.getInstance().onActivityResumed(mock(Activity.class));
 
         /* Call notify download. */
-        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails, mInstallIntent);
+        boolean notifyDownloadResult = Distribute.getInstance().notifyDownload(mReleaseDetails);
 
         /* Verify. */
         assertFalse(notifyDownloadResult);
@@ -398,7 +407,7 @@ public class DistributeTest extends AbstractDistributeTest {
         mockStatic(DistributeUtils.class);
         when(DistributeUtils.loadCachedReleaseDetails()).thenReturn(mReleaseDetails);
         Distribute.getInstance().startFromBackground(mContext);
-        assertTrue(Distribute.getInstance().notifyDownload(mock(ReleaseDetails.class), mInstallIntent));
+        assertTrue(Distribute.getInstance().notifyDownload(mock(ReleaseDetails.class)));
     }
 
     @Test
@@ -845,6 +854,198 @@ public class DistributeTest extends AbstractDistributeTest {
         verify(mHttpClient, times(2)).callAsync(anyString(), anyString(), eq(Collections.<String, String>emptyMap()), any(HttpClient.CallTemplate.class), httpCallback.capture());
     }
 
+    @Test
+    public void registerReceiver() {
+        /* Start distribute. */
+        start();
+
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity not null, registering receiver started
+         */
+        Distribute.getInstance().onActivityResumed(mActivity);
+
+        verify(mActivity).registerReceiver(any(AppCenterPackageInstallerReceiver.class), any(IntentFilter.class));
+
+        verifyStatic();
+        AppCenterLog.debug(eq(LOG_TAG), eq("The receiver for installing a new release was registered."));
+    }
+
+    @Test
+    public void sendWarningWhenCantRegisterReceiver() {
+        /* Start distribute. */
+        start();
+
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity is null, registering receiver started
+         */
+        Distribute.getInstance().onActivityResumed(null);
+
+        verifyStatic(atLeastOnce());
+        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register receiver due to activity is null."));
+    }
+
+    @Test
+    public  void handleExceptionRegisteringReceiver() {
+        IllegalArgumentException mIllegalArgumentException = new IllegalArgumentException();
+        when(mActivity.registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any())).thenThrow(mIllegalArgumentException);
+
+        /* Start distribute. */
+        start();
+
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity not null, registering receiver started
+         */
+        Distribute.getInstance().onActivityResumed(mActivity);
+        
+        verifyStatic();
+        AppCenterLog.error(eq(LOG_TAG), eq("The receiver wasn't registered."), eq(mIllegalArgumentException));
+    }
+
+    @Test
+    public void unregisterReceiver() {
+        /* Start distribute. */
+        start();
+
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity not null, registering receiver started
+         */
+        Distribute.getInstance().onActivityResumed(mActivity);
+
+        /*
+         * Set disabled state, so unregistering receiver will starts
+         */
+        Distribute.getInstance().applyEnabledState(false);
+
+        verify(mActivity).unregisterReceiver(any(AppCenterPackageInstallerReceiver.class));
+
+        verifyStatic();
+        AppCenterLog.debug(eq(LOG_TAG), eq("The receiver for installing a new release was unregistered."));
+    }
+
+    @Test
+    public void sendWarningWhenCantUnregisterReceiver() {
+        /* Start distribute. */
+        start();
+
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity is null
+         */
+        Distribute.getInstance().onActivityResumed(null);
+
+        /*
+         * Set disabled state, so unregistering receiver will starts
+         */
+        Distribute.getInstance().applyEnabledState(false);
+
+        verifyStatic();
+        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register unregister due to activity is null."));
+    }
+
+    @Test
+    public void handleExceptionUnregisteringReceiver() {
+        /* Start distribute. */
+        start();
+
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity not null
+         */
+        Distribute.getInstance().onActivityResumed(mActivity);
+
+        /*
+         * Set disabled state, so unregistering receiver will starts
+         */
+        Distribute.getInstance().applyEnabledState(false);
+
+        IllegalArgumentException mIllegalArgumentException = new IllegalArgumentException();
+        when(mActivity.registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any())).thenThrow(mIllegalArgumentException);
+
+        mockStatic(AppCenterLog.class);
+        AppCenterLog.error(eq(LOG_TAG), eq("The receiver wasn't registered."), eq(mIllegalArgumentException));
+    }
+
+    @Test
+    public void NotifyInstallProgressReturnOnNullActivity() {
+        /* Start distribute. */
+        start();
+
+        Distribute.getInstance().notifyInstallProgress(true);
+
+        verifyStatic();
+        AppCenterLog.warn(eq(LOG_TAG), eq("Could not display install progress dialog in the background."));
+    }
+
+    @Test
+    public void NotifyInstallProgressReturnOnNullInstallerListener() throws Exception {
+        /* Start distribute. */
+        start();
+
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity not null
+         */
+        Distribute.getInstance().onActivityResumed(mActivity);
+
+        /*
+        * Initialize mReleaseInstallerListener
+        */
+        Distribute.getInstance().startFromBackground(mContext);
+
+        /*
+        * Remove listener if it is not null
+        */
+        Distribute.getInstance().notifyInstallProgress(false);
+
+        Distribute.getInstance().notifyInstallProgress(true);
+
+        verify(mReleaseInstallerListener, never()).hideInstallProgressDialog();
+    }
+
+    @Test
+    public void NotifyInstallProgressShowsDialog() {
+        /* Start distribute. */
+        Distribute.getInstance().onStarting(mAppCenterHandler);
+        Distribute.getInstance().onStarted(mContext, mChannel, null, null, true);
+
+        Dialog mDialog= mock(Dialog.class);
+        when(mReleaseInstallerListener.showInstallProgressDialog(Matchers.<Activity>any())).thenReturn(mDialog);
+        /*
+         * Call resume with the activity reference so that
+         * mForegroundActivity not null
+         */
+        Distribute.getInstance().onActivityResumed(mActivity);
+
+        /*
+         * Initialize mReleaseInstallerListener
+         */
+        Distribute.getInstance().startFromBackground(mContext);
+
+        Distribute.getInstance().notifyInstallProgress(true);
+
+        verify(mReleaseInstallerListener).hideInstallProgressDialog();
+    }
+
+    @Test
+    public void HideDialogWhenNotInProgress() {
+        /* Start distribute. */
+        Distribute.getInstance().onStarting(mAppCenterHandler);
+        Distribute.getInstance().onStarted(mContext, mChannel, null, null, true);
+
+        /*
+         * Initialize mReleaseInstallerListener
+         */
+        Distribute.getInstance().startFromBackground(mContext);
+
+        Distribute.getInstance().notifyInstallProgress(false);
+
+        verify(mReleaseInstallerListener).hideInstallProgressDialog();
+    }
+
     private void firstDownloadNotification(int apiLevel) throws Exception {
         TestUtils.setInternalState(Build.VERSION.class, "SDK_INT", apiLevel);
         mockStatic(DistributeUtils.class);
@@ -856,7 +1057,7 @@ public class DistributeTest extends AbstractDistributeTest {
         when(mContext.getSystemService(NOTIFICATION_SERVICE)).thenReturn(manager);
         Distribute.getInstance().startFromBackground(mContext);
         Distribute.getInstance().onStarted(mContext, mChannel, "0", "Anna", false);
-        Distribute.getInstance().notifyDownload(mReleaseDetails, mInstallIntent);
+        Distribute.getInstance().notifyDownload(mReleaseDetails);
         verify(manager).notify(eq(DistributeUtils.getNotificationId()), any(Notification.class));
     }
 }

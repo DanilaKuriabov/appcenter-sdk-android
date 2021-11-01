@@ -148,6 +148,9 @@ public class AbstractDistributeTest {
     ReleaseDownloadListener mReleaseDownloaderListener;
 
     @Mock
+    ReleaseInstallerListener mReleaseInstallerListener;
+
+    @Mock
     ReleaseDetails mReleaseDetails;
 
     @Mock
@@ -303,6 +306,10 @@ public class AbstractDistributeTest {
         mockStatic(ReleaseDetails.class);
         when(ReleaseDetails.parse(anyString())).thenReturn(mReleaseDetails);
 
+        /* Mock Distribute Utils. */
+        mockStatic(DistributeUtils.class);
+        when(DistributeUtils.loadCachedReleaseDetails()).thenReturn(mReleaseDetails);
+
         /* Mock Release Downloader. */
         mockStatic(ReleaseDownloaderFactory.class);
         when(ReleaseDownloaderFactory.create(any(Context.class), any(ReleaseDetails.class), any(ReleaseDownloadListener.class))).thenReturn(mReleaseDownloader);
@@ -311,6 +318,10 @@ public class AbstractDistributeTest {
         /* Mock Release Downloader Listener. */
         mReleaseDownloaderListener = mock(ReleaseDownloadListener.class);
         whenNew(ReleaseDownloadListener.class).withArguments(any(Context.class), any(ReleaseDetails.class)).thenReturn(mReleaseDownloaderListener);
+
+        /* Mock Release Installer Listener. */
+        mReleaseInstallerListener = mock(ReleaseInstallerListener.class);
+        whenNew(ReleaseInstallerListener.class).withArguments(any(Context.class)).thenReturn(mReleaseInstallerListener);
 
         /* Mock Uri. */
         when(mUri.toString()).thenReturn(LOCAL_FILENAME_PATH_MOCK);

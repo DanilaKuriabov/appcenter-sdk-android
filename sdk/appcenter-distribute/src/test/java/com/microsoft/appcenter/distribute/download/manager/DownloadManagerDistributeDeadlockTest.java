@@ -255,7 +255,7 @@ public class DownloadManagerDistributeDeadlockTest {
 
             @Override
             public void run() {
-                mReleaseDownloader.onDownloadComplete(mCursor);
+                mReleaseDownloader.onDownloadComplete();
             }
         });
     }

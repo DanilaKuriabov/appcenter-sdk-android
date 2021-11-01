@@ -41,6 +41,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
@@ -374,9 +375,9 @@ public class ReleaseDownloadListenerTest {
         ReleaseDetails mockReleaseDetails = mockReleaseDetails(true);
 
         /* Do not notify the download. */
-        when(mDistribute.notifyDownload(mockReleaseDetails, mInstallIntent)).thenReturn(false);
+        when(mDistribute.notifyDownload(mockReleaseDetails)).thenReturn(false);
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
-        assertTrue(releaseDownloadListener.onComplete(mUri));
+        verify(releaseDownloadListener).onComplete(anyLong());
 
         /* Verify that setInstalling() is called on mandatory update. */
         verify(mDistribute).setInstalling(mockReleaseDetails);
@@ -389,9 +390,9 @@ public class ReleaseDownloadListenerTest {
         ReleaseDetails mockReleaseDetails = mockReleaseDetails(mandatoryUpdate);
 
         /* Notify the download. */
-        when(mDistribute.notifyDownload(mockReleaseDetails, mInstallIntent)).thenReturn(true);
+        when(mDistribute.notifyDownload(mockReleaseDetails)).thenReturn(true);
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
-        assertTrue(releaseDownloadListener.onComplete(mUri));
+        verify(releaseDownloadListener).onComplete(anyLong());
 
         /* Verify that startActivity() and setInstalling() are not called here. */
         verify(mContext, never()).startActivity(any(Intent.class));
@@ -400,6 +401,7 @@ public class ReleaseDownloadListenerTest {
 
     @Test
     public void onCompleteActivityNotResolved() throws Exception {
+
         boolean mandatoryUpdate = false;
 
         /* Mock resolving to null activity. */
@@ -408,7 +410,7 @@ public class ReleaseDownloadListenerTest {
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
 
         /* Verify that nothing is called and the method is exited early with false result. */
-        assertFalse(releaseDownloadListener.onComplete(mUri));
+        verify(releaseDownloadListener).onComplete(anyLong());
         verify(mContext, never()).startActivity(any(Intent.class));
         verify(mDistribute, never()).setInstalling(mockReleaseDetails);
     }
