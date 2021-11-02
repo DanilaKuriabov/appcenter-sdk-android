@@ -197,7 +197,6 @@ public class DownloadManagerDistributeDeadlockTest {
         when(mInstallIntent.getData()).thenReturn(mUri);
         when(mInstallIntent.resolveActivity(eq(mPackageManager))).thenReturn(mock(ComponentName.class));
         mockStatic(InstallerUtils.class);
-        PowerMockito.when(InstallerUtils.class, "getInstallIntent", Matchers.<Object[]>any()).thenReturn(mInstallIntent);
 
         /* Mock app name and other string resources. */
         mockStatic(AppNameHelper.class);

@@ -320,22 +320,8 @@ public class DownloadManagerReleaseDownloaderTest {
         mReleaseDownloader.onDownloadComplete();
 
         /* Verify. */
-        verify(mListener, times(2)).onComplete(anyLong());
-        verify(mListener, never()).onError(anyString());
-    }
-
-    @Test
-    public void completeDownloadingFallbackOnNewDevices() {
-        mockStatic(Uri.class);
-        when(Uri.parse(anyString())).thenReturn(mock(Uri.class));
-        Whitebox.setInternalState(Build.VERSION.class, "SDK_INT", Build.VERSION_CODES.O);
-
-        /* Complete download. */
-        mReleaseDownloader.onDownloadComplete();
-
-        /* Verify. */
         verify(mListener).onComplete(anyLong());
-        verify(mListener).onError(anyString());
+        verify(mListener, never()).onError(anyString());
     }
 
     @Test
