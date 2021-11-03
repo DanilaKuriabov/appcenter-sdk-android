@@ -377,11 +377,11 @@ public class ReleaseDownloadListenerTest {
         /* Do not notify the download. */
         when(mDistribute.notifyDownload(mockReleaseDetails)).thenReturn(false);
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
-        verify(releaseDownloadListener).onComplete(anyLong());
+        releaseDownloadListener.onComplete(anyLong());
 
         /* Verify that setInstalling() is called on mandatory update. */
         verify(mDistribute).setInstalling(mockReleaseDetails);
-        verify(mContext).startActivity(mInstallIntent);
+        verify(mDistribute).showSystemSettingsDialogOrStartInstalling(anyLong());
     }
 
     @Test
@@ -392,7 +392,7 @@ public class ReleaseDownloadListenerTest {
         /* Notify the download. */
         when(mDistribute.notifyDownload(mockReleaseDetails)).thenReturn(true);
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
-        verify(releaseDownloadListener).onComplete(anyLong());
+        releaseDownloadListener.onComplete(anyLong());
 
         /* Verify that startActivity() and setInstalling() are not called here. */
         verify(mContext, never()).startActivity(any(Intent.class));
@@ -401,8 +401,10 @@ public class ReleaseDownloadListenerTest {
 
     @Test
     public void onCompleteActivityNotResolved() throws Exception {
-
         boolean mandatoryUpdate = false;
+
+        /* Mock notify download result. */
+        when(mDistribute.notifyDownload(any(ReleaseDetails.class))).thenReturn(true);
 
         /* Mock resolving to null activity. */
         when(mInstallIntent.resolveActivity(any(PackageManager.class))).thenReturn(null);
@@ -410,8 +412,8 @@ public class ReleaseDownloadListenerTest {
         ReleaseDownloadListener releaseDownloadListener = new ReleaseDownloadListener(mContext, mockReleaseDetails);
 
         /* Verify that nothing is called and the method is exited early with false result. */
-        verify(releaseDownloadListener).onComplete(anyLong());
-        verify(mContext, never()).startActivity(any(Intent.class));
+        releaseDownloadListener.onComplete(anyLong());
+        verify(mDistribute, never()).showSystemSettingsDialogOrStartInstalling(anyLong());
         verify(mDistribute, never()).setInstalling(mockReleaseDetails);
     }
 }
