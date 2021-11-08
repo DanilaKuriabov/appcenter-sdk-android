@@ -39,12 +39,14 @@ import com.microsoft.appcenter.utils.storage.SharedPreferencesManager;
 
 import org.junit.After;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 import org.mockito.internal.util.reflection.Whitebox;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.powermock.core.classloader.annotations.PrepareForTest;
+import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.sql.SQLOutput;
 import java.util.Collections;
@@ -85,7 +87,8 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 import static org.powermock.api.mockito.PowerMockito.verifyStatic;
 import static org.powermock.api.mockito.PowerMockito.whenNew;
 
-@PrepareForTest({DistributeUtils.class, HttpUtils.class, DeviceInfoHelper.class, AppCenterLog.class})
+@PrepareForTest({DistributeUtils.class, HttpUtils.class, DeviceInfoHelper.class})
+@RunWith(PowerMockRunner.class)
 public class DistributeTest extends AbstractDistributeTest {
 
     private static final String DISTRIBUTION_GROUP_ID = "group_id";
