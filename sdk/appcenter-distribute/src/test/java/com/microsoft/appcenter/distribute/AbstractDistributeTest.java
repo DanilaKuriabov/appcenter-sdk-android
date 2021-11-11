@@ -305,10 +305,6 @@ public class AbstractDistributeTest {
         mockStatic(ReleaseDetails.class);
         when(ReleaseDetails.parse(anyString())).thenReturn(mReleaseDetails);
 
-        /* Mock Distribute Utils. */
-        mockStatic(DistributeUtils.class);
-        when(DistributeUtils.loadCachedReleaseDetails()).thenReturn(mReleaseDetails);
-
         /* Mock Release Downloader. */
         mockStatic(ReleaseDownloaderFactory.class);
         when(ReleaseDownloaderFactory.create(any(Context.class), any(ReleaseDetails.class), any(ReleaseDownloadListener.class))).thenReturn(mReleaseDownloader);
