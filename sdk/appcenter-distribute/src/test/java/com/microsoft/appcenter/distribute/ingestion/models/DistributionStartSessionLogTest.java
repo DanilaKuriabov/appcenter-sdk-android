@@ -5,7 +5,7 @@
 
 package com.microsoft.appcenter.distribute.ingestion.models;
 
-import com.microsoft.appcenter.test.TestUtils;
+import  com.microsoft.appcenter.test.TestUtils;
 
 import org.junit.Test;
 

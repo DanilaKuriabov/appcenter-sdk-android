@@ -148,6 +148,9 @@ public class AbstractDistributeTest {
     ReleaseDownloadListener mReleaseDownloaderListener;
 
     @Mock
+    ReleaseInstallerListener mReleaseInstallerListener;
+
+    @Mock
     ReleaseDetails mReleaseDetails;
 
     @Mock
@@ -311,6 +314,10 @@ public class AbstractDistributeTest {
         /* Mock Release Downloader Listener. */
         mReleaseDownloaderListener = spy(new ReleaseDownloadListener(mContext, mReleaseDetails));
         whenNew(ReleaseDownloadListener.class).withArguments(any(Context.class), any(ReleaseDetails.class)).thenReturn(mReleaseDownloaderListener);
+
+        /* Mock Release Installer Listener. */
+        mReleaseInstallerListener = mock(ReleaseInstallerListener.class);
+        whenNew(ReleaseInstallerListener.class).withArguments(any(Context.class)).thenReturn(mReleaseInstallerListener);
 
         /* Mock Uri. */
         when(mUri.toString()).thenReturn(LOCAL_FILENAME_PATH_MOCK);
