@@ -16,10 +16,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
-import android.content.pm.PackageInstaller;
 import android.os.Build;
 
 import com.microsoft.appcenter.DependencyConfiguration;
@@ -43,13 +40,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
-import org.mockito.Mock;
 import org.mockito.internal.util.reflection.Whitebox;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 
-import java.sql.SQLOutput;
 import java.util.Collections;
 import java.util.Map;
 
@@ -67,13 +62,11 @@ import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_
 import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_KEY_DOWNLOAD_TIME;
 import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_KEY_RELEASE_DETAILS;
 import static com.microsoft.appcenter.distribute.DistributeConstants.PREFERENCE_KEY_UPDATE_SETUP_FAILED_MESSAGE_KEY;
-import static com.microsoft.appcenter.test.TestUtils.checkEquals;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyString;
@@ -83,7 +76,6 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -101,14 +93,6 @@ public class DistributeTest extends AbstractDistributeTest {
     private static final String RELEASE_HASH = "release_hash";
 
     private static final int RELEASE_ID = 123;
-
-    @Before
-    public void setUpMocks() {
-
-        /* Mock Distribute Utils. */
-        mockStatic(DistributeUtils.class);
-        when(DistributeUtils.loadCachedReleaseDetails()).thenReturn(mReleaseDetails);
-    }
 
     @After
     public void tearDown() throws Exception {
@@ -571,7 +555,6 @@ public class DistributeTest extends AbstractDistributeTest {
 
         ProgressDialog progressDialog = mock(ProgressDialog.class);
         doReturn(progressDialog).when(mReleaseDownloaderListener).showDownloadProgress(mActivity);
-//        when(mReleaseDownloaderListener.showDownloadProgress(mActivity)).thenReturn(progressDialog);
 
         resumeWorkflow(mActivity);
         verify(mReleaseDownloaderListener).showDownloadProgress(mActivity);
@@ -871,180 +854,68 @@ public class DistributeTest extends AbstractDistributeTest {
         /* Verify that check release for update was called again. */
         verify(mHttpClient, times(2)).callAsync(anyString(), anyString(), eq(Collections.<String, String>emptyMap()), any(HttpClient.CallTemplate.class), httpCallback.capture());
     }
-//
-//    @Test
-//    public void registerReceiver() {
-//
-//        /* Start distribute. */
-//        start();
-//
-//        /*
-//         * Call resume with the activity reference so that
-//         * mForegroundActivity not null, registering receiver started.
-//         */
-//        Distribute.getInstance().onActivityResumed(mActivity);
-//        verify(mActivity).registerReceiver(any(AppCenterPackageInstallerReceiver.class), any(IntentFilter.class));
-//        verifyStatic();
-//        AppCenterLog.debug(eq(LOG_TAG), eq("The receiver for installing a new release was registered."));
-//    }
-//
-//    @Test
-//    public void sendWarningWhenCantRegisterReceiver() {
-//        /* Start distribute. */
-//        start();
-//
-//        /*
-//         * Call resume with the activity reference so that
-//         * mForegroundActivity is null, registering receiver started.
-//         */
-//        Distribute.getInstance().onActivityResumed(null);
-//        verifyStatic(atLeastOnce());
-//        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register receiver due to activity is null."));
-//    }
-//
-//    @Test
-//    public  void handleExceptionRegisteringReceiver() {
-//        IllegalArgumentException mIllegalArgumentException = new IllegalArgumentException();
-//        when(mActivity.registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any())).thenThrow(mIllegalArgumentException);
-//
-//        /* Start distribute. */
-//        start();
-//
-//        /*
-//         * Call resume with the activity reference so that
-//         * mForegroundActivity not null, registering receiver started.
-//         */
-//        Distribute.getInstance().onActivityResumed(mActivity);
-//        verifyStatic();
-//        AppCenterLog.error(eq(LOG_TAG), eq("The receiver wasn't registered."), eq(mIllegalArgumentException));
-//    }
-//
-//    @Test
-//    public void unregisterReceiver() {
-//        /* Start distribute. */
-//        start();
-//
-//        /*
-//         * Call resume with the activity reference so that
-//         * mForegroundActivity not null, registering receiver started.
-//         */
-//        Distribute.getInstance().onActivityResumed(mActivity);
-//
-//        /*
-//         * Set disabled state, so unregistering receiver will starts.
-//         */
-//        Distribute.getInstance().applyEnabledState(false);
-//        verify(mActivity).unregisterReceiver(any(AppCenterPackageInstallerReceiver.class));
-//        verifyStatic();
-//        AppCenterLog.debug(eq(LOG_TAG), eq("The receiver for installing a new release was unregistered."));
-//    }
-//
-//    @Test
-//    public void sendWarningWhenCantUnregisterReceiver() {
-//
-//        /* Start distribute. */
-//        start();
-//
-//        /*
-//         * Call resume with the activity reference so that
-//         * mForegroundActivity is null.
-//         */
-//        Distribute.getInstance().onActivityResumed(null);
-//
-//        /*
-//         * Set disabled state, so unregistering receiver will starts.
-//         */
-//        Distribute.getInstance().applyEnabledState(false);
-//        verifyStatic();
-//        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register unregister due to activity is null."));
-//    }
-//
-//    @Test
-//    public void handleExceptionUnregisteringReceiver() {
-//        /* Start distribute. */
-//        start();
-//
-//        /*
-//         * Call resume with the activity reference so that mForegroundActivity not null.
-//         */
-//        Distribute.getInstance().onActivityResumed(mActivity);
-//
-//        /*
-//         * Set disabled state, so unregistering receiver will starts.
-//         */
-//        Distribute.getInstance().applyEnabledState(false);
-//        IllegalArgumentException mIllegalArgumentException = new IllegalArgumentException();
-//        when(mActivity.registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any())).thenThrow(mIllegalArgumentException);
-//        mockStatic(AppCenterLog.class);
-//        AppCenterLog.error(eq(LOG_TAG), eq("The receiver wasn't registered."), eq(mIllegalArgumentException));
-//    }
 
     @Test
-    public void registerUnregisterReceiver() {
-        IllegalArgumentException mIllegalArgumentException = new IllegalArgumentException();
-        when(mActivity.registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any())).thenThrow(mIllegalArgumentException);
+    public void checkRegisterReceiver() {
+        mockStatic(SharedPreferencesManager.class);
+        when(SharedPreferencesManager.getBoolean(DISTRIBUTE_ENABLED_KEY, true)).thenReturn(false).thenReturn(true);
+
+        /* Verify that when distribute disabled no receivers was registered. */
+        Distribute.getInstance().onActivityResumed(mActivity);
+        verify(mActivity, never()).registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any());
 
         /* Start distribute. */
         start();
 
-        /*
-         * Call resume with the activity reference so that
-         * mForegroundActivity not null, registering receiver started.
-         */
+        /* Check that receiver was registered. */
+        verify(mActivity).registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any());
+
+        /* Emulate lifecycle behaviour. */
+        Distribute.getInstance().onActivityPaused(mActivity);
+        Distribute.getInstance().onActivityStopped(mActivity);
+
+        /* Mock throwing exception. */
+        when(mActivity.registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any())).thenThrow(new IllegalArgumentException());
+        Distribute.getInstance().onActivityStarted(mActivity);
         Distribute.getInstance().onActivityResumed(mActivity);
+
+        /* Check that receiver was not registered again. */
+        verify(mActivity).registerReceiver(Matchers.<BroadcastReceiver>any(), Matchers.<IntentFilter>any());
         verifyStatic();
-        AppCenterLog.error(eq(LOG_TAG), eq("The receiver wasn't registered."), eq(mIllegalArgumentException));
-        Distribute.getInstance().onActivityPaused(mActivity);
+        AppCenterLog.error(eq(LOG_TAG), eq("The receiver wasn't registered."), Matchers.<IllegalArgumentException>any());
 
-        /*
-         * Call resume with the activity reference so that
-         * mForegroundActivity is null, registering receiver started.
-         */
-        Distribute.getInstance().onActivityResumed(null);
-        verifyStatic(atLeastOnce());
-        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register receiver due to activity is null."));
-        Distribute.getInstance().onActivityPaused(mActivity);
+        /* Disable distribute and verify that receiver was unregistered. */
+        Distribute.setEnabled(false);
+        verify(mActivity).unregisterReceiver(Matchers.<BroadcastReceiver>any());
 
-        /*
-         * Call resume with the activity reference so that
-         * mForegroundActivity not null, registering receiver started.
-         */
-        Distribute.getInstance().onActivityResumed(mActivity);
-        verify(mActivity, atLeastOnce()).registerReceiver(any(AppCenterPackageInstallerReceiver.class), any(IntentFilter.class));
-        Distribute.getInstance().onActivityPaused(mActivity);
-        Distribute.getInstance().onActivityResumed(mActivity);
-
-        /* Set disabled state, so unregistering receiver will starts. */
-        Distribute.getInstance().applyEnabledState(false);
-        verify(mActivity).unregisterReceiver(any(AppCenterPackageInstallerReceiver.class));
-        verifyStatic();
-        AppCenterLog.debug(eq(LOG_TAG), eq("The receiver for installing a new release was unregistered."));
-        Distribute.getInstance().onActivityPaused(mActivity);
-
-        /*
-         * Call resume with the activity reference so that
-         * mForegroundActivity is null.
-         */
-        Distribute.getInstance().onActivityResumed(null);
-
-        /* Set disabled state, so unregistering receiver will starts. */
+        /* Disable distribute again and verify that unregister receiver throw exception. */
+        willThrow(new IllegalArgumentException()).given(mActivity).unregisterReceiver(Matchers.<BroadcastReceiver>any());
         Distribute.getInstance().applyEnabledState(false);
         verifyStatic();
-        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register unregister due to activity is null."));
-        Distribute.getInstance().onActivityPaused(mActivity);
-
-        /* Call resume with the activity reference so that mForegroundActivity not null. */
-        Distribute.getInstance().onActivityResumed(mActivity);
-
-        /* Set disabled state, so unregistering receiver will starts. */
-        Distribute.getInstance().applyEnabledState(false);
-        doThrow(mIllegalArgumentException).when(mActivity).unregisterReceiver(Matchers.<BroadcastReceiver>any());
-        mockStatic(AppCenterLog.class);
-        AppCenterLog.error(eq(LOG_TAG), eq("The receiver wasn't unregistered."), eq(mIllegalArgumentException));
+        AppCenterLog.error(eq(LOG_TAG), eq("Couldn't register unregister due to activity is null."), Matchers.<IllegalArgumentException>any());
     }
 
     @Test
-    public void notifyInstallProgressReturnOnNullActivity() {
+    public void checkRegisterReceiverWhenActivityNull() {
+
+        /* Start Distribute. */
+        start();
+
+        /* Verify that receiver was not registered. */
+        verifyStatic();
+        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register receiver due to activity is null."));
+
+        /* Disable Distribute. */
+        Distribute.setEnabled(false);
+
+        /* Verify that receiver was not registered. */
+        verifyStatic();
+        AppCenterLog.warn(eq(LOG_TAG), eq("Couldn't register receiver due to activity is null."));
+    }
+
+    @Test
+    public void checkProgressWhenActivityNull() {
+
         /* Start distribute. */
         start();
         Distribute.getInstance().notifyInstallProgress(true);
@@ -1053,16 +924,16 @@ public class DistributeTest extends AbstractDistributeTest {
     }
 
     @Test
-    public void notifyInstallProgressReturnOnNullInstallerListener() throws Exception {
+    public void checkProgressWhenReleaseInstallerNull() {
 
         /* Start distribute. */
         start();
 
-        /* Call resume with the activity reference so that mForegroundActivity not null. */
-        Distribute.getInstance().onActivityResumed(mActivity);
-
         /* Initialize mReleaseInstallerListener. */
         Distribute.getInstance().startFromBackground(mContext);
+
+        /* Call resume with the activity reference so that mForegroundActivity not null. */
+        Distribute.getInstance().onActivityResumed(mActivity);
 
         /* Remove listener if it is not null. */
         Distribute.getInstance().notifyInstallProgress(false);
@@ -1071,119 +942,29 @@ public class DistributeTest extends AbstractDistributeTest {
     }
 
     @Test
-    public void notifyInstallProgressShowsDialog() {
+    public void checkInstallProgressState() {
+
+        /* Mock Distribute Utils. */
+        mockStatic(DistributeUtils.class);
+        when(DistributeUtils.loadCachedReleaseDetails()).thenReturn(mReleaseDetails);
 
         /* Start distribute. */
         Distribute.getInstance().onStarting(mAppCenterHandler);
         Distribute.getInstance().onStarted(mContext, mChannel, null, null, true);
-        Dialog mDialog = mock(Dialog.class);
         when(mReleaseInstallerListener.showInstallProgressDialog(Matchers.<Activity>any())).thenReturn(mDialog);
 
-        /*
-         * Call resume with the activity reference so that
-         * mForegroundActivity not null.
-         */
+        /* Resume activity. */
         Distribute.getInstance().onActivityResumed(mActivity);
 
-        /* Initialize mReleaseInstallerListener. */
+        /* Verify that release listener was initialized. */
         Distribute.getInstance().startFromBackground(mContext);
         Distribute.getInstance().notifyInstallProgress(true);
         verify(mReleaseInstallerListener).hideInstallProgressDialog();
-    }
+        verify(mReleaseInstallerListener).showInstallProgressDialog(Matchers.<Activity>any());
 
-    @Test
-    public void hideDialogWhenNotInProgress() {
-
-        /* Start distribute. */
-        Distribute.getInstance().onStarting(mAppCenterHandler);
-        Distribute.getInstance().onStarted(mContext, mChannel, null, null, true);
-
-        /* Initialize mReleaseInstallerListener. */
-        Distribute.getInstance().startFromBackground(mContext);
+        /* Stop installing and verify thad dialog was hide. */
         Distribute.getInstance().notifyInstallProgress(false);
-        verify(mReleaseInstallerListener).hideInstallProgressDialog();
-    }
-
-    @Test
-    public void checkConfig() {
-        Distribute instance = Distribute.getInstance();
-
-        instance.setInstanceEnabled(false);
-        assertFalse(instance.isInstanceEnabled());
-        instance.setInstanceEnabled(true);
-        assertTrue(instance.isInstanceEnabled());
-        assertEquals(LOG_TAG, Distribute.getInstance().getLoggerTag());
-        assertEquals(1, instance.getTriggerCount());
-    }
-
-    @Test
-    public void startedFromBackground() {
-        Distribute instance = Distribute.getInstance();
-
-        /* Start before onStarted method invoked. */
-        instance.startFromBackground(mContext);
-        verifyStatic();
-        AppCenterLog.debug(eq(LOG_TAG), eq("Called before onStart, init storage"));
-
-//        Distribute.setInstallUrl("");
-//        Distribute.setApiUrl("");
-//        Distribute.setListener(new DistributeListener() {
-//            @Override
-//            public boolean onReleaseAvailable(Activity activity, ReleaseDetails releaseDetails) {
-//                return false;
-//            }
-//
-//            @Override
-//            public void onNoReleaseAvailable(Activity activity) {
-//
-//            }
-//        });
-    }
-
-    @Test
-    public void checkSwitches() {
-        Distribute instance = Distribute.getInstance();
-
-        Distribute.setEnabled(false);
-        assertFalse(Distribute.isEnabled().get());
-
-//        Distribute.setEnabled(true);
-//        assertTrue(Distribute.isEnabled().get());
-
-        Distribute.setInstallUrl("testInstallUrl");
-        Distribute.setApiUrl("testApiUrl");
-    }
-
-    @Test
-    public void resumeDistributeWorkflowTest() {
-        Distribute instance = Distribute.getInstance();
-
-        mContext.getApplicationInfo().flags = FLAG_DEBUGGABLE;
-        Distribute.setEnabledForDebuggableBuild(false);
-        start();
-        instance.onActivityResumed(mActivity);
-        verifyStatic();
-        AppCenterLog.info(eq(LOG_TAG), eq("Not checking for in-app updates in debuggable build."));
-
-        instance.onActivityPaused(mActivity);
-
-//        Distribute.setEnabledForDebuggableBuild(true);
-//        mockStatic(InstallerUtils.class);
-//        when(InstallerUtils.isInstalledFromAppStore(anyString(), Matchers.<Context>any())).thenReturn(true);
-//        instance.onActivityResumed(mActivity);
-//        verifyStatic();
-//        AppCenterLog.info(eq(LOG_TAG), eq("Not checking in app updates as installed from a store."));
-
-    }
-
-    @Test
-    public void verifyUpdateTrack() {
-
-        /* Check valid updateTracks. */
-        Distribute.setUpdateTrack(UpdateTrack.PUBLIC);
-        assertEquals(UpdateTrack.PUBLIC, Distribute.getUpdateTrack());
-        Distribute.setUpdateTrack(UpdateTrack.PRIVATE);
-        assertEquals(UpdateTrack.PRIVATE, Distribute.getUpdateTrack());
+        verify(mReleaseInstallerListener, times(2)).hideInstallProgressDialog();
     }
 
     private void firstDownloadNotification(int apiLevel) throws Exception {

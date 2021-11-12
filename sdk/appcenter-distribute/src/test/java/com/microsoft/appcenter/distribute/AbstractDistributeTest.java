@@ -90,7 +90,7 @@ public class AbstractDistributeTest {
 
     static final String TEST_HASH = HashUtils.sha256("com.contoso:1.2.3:6");
 
-    private static final String DISTRIBUTE_ENABLED_KEY = KEY_ENABLED + "_Distribute";
+    public static final String DISTRIBUTE_ENABLED_KEY = KEY_ENABLED + "_Distribute";
 
     private static final String LOCAL_FILENAME_PATH_MOCK = "ANSWER_IS_42";
 
